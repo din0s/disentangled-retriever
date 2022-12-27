@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_shared
+#SBATCH --gres=gpu:0
+#SBATCH --job-name=PrepareBEIR
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=3
+#SBATCH --time=01:00:00
+#SBATCH --mem=32000M
+#SBATCH --output=out/slurm_beir_%A.out
+
+module purge
+module load 2022
+module load Anaconda3/2022.05
+source activate thesis
+
+cd $HOME/disentangled-retriever
+mkdir -p data/adapt-mlm/$DATASET
+mkdir -p data/eval-mlm/$DATASET
+
+echo Preparing $DATASET.
+python -u ./examples/prepare_dataset/english-marco/prepare_beir.py --input_dir ./data/datasets/$DATASET
+

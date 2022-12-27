@@ -1,0 +1,54 @@
+#!/bin/bash
+
+#SBATCH --job-name=EvalDAM
+#SBATCH --partition=gpu_titanrtx
+#SBATCH --time=12:00:00
+
+#SBATCH --gres=gpu:4
+#SBATCH --ntasks=4
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=186gb
+
+#SBATCH --output=out/slurm_eval_%A.out
+
+# Expects the following env var to be set:
+## - DATASET: name of the dataset to evaluate on
+
+module purge
+module load 2022
+module load Anaconda3/2022.05
+source activate thesis
+
+export OMP_NUM_THREADS=6
+
+BACKBONE="./data/adapt-mlm/$DATASET"
+DATA_DIR="./data/datasets/$DATASET"
+OUTPUT_DIR="./data/eval-mlm/$DATASET"
+
+#REM="./data/rem-msmarco-contrast"
+REM="./data/rem-msmarco-distil"
+BATCH_SIZE=48
+TOP_K=1000
+
+echo Evaluating $DATASET.
+cd $HOME/disentangled-retriever
+python -u \
+    -m torch.distributed.launch \
+    --nproc_per_node 4 \
+    -m disentangled_retriever.dense.evaluate.run_eval \
+    --backbone_name_or_path $BACKBONE \
+    --adapter_name_or_path $REM \
+    --corpus_path $DATA_DIR/corpus.tsv \
+    --query_path $DATA_DIR/query.test \
+    --qrel_path $DATA_DIR/qrels.test \
+    --output_dir $OUTPUT_DIR \
+    --out_corpus_dir $OUTPUT_DIR/corpus \
+    --out_query_dir $OUTPUT_DIR/test \
+    --per_device_eval_batch_size $BATCH_SIZE \
+    --overwrite_output_dir \
+    --dataloader_num_workers 6 \
+    --pooling average \
+    --similarity_metric ip \
+    --topk $TOP_K \
+    --save_corpus_embed \
+    --save_query_embed

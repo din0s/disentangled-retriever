@@ -1,0 +1,66 @@
+#!/bin/bash
+
+#SBATCH --job-name=TrainDAM
+#SBATCH --partition=gpu_titanrtx
+#SBATCH --time=12:00:00
+
+#SBATCH --gres=gpu:4
+#SBATCH --ntasks=4
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=128gb
+
+#SBATCH --output=out/slurm_dam_%A.out
+
+# Expects the following env var to be set:
+## - DATASET: dataset to train the DAM module on
+
+module purge
+module load 2022
+module load Anaconda3/2022.05
+source activate thesis
+
+export OMP_NUM_THREADS=6
+export WANDB_PROJECT=domain-adaptation
+
+CORPUS_PATH="./data/datasets/$DATASET/corpus.tsv"
+OUTPUT_DIR="./data/adapt-mlm/$DATASET"
+
+LR=2e-5
+OPTIM=adamw_torch
+W_DECAY=0.01
+BATCH_SIZE=100 #64
+MAX_LEN=190
+LOG_STEPS=50
+SAVE_STEPS=10000
+GRAD_ACCUM_STEPS=1
+WARMUP_STEPS=1000
+MAX_STEPS=50000
+
+echo Training DAM on $DATASET.
+cd $HOME/disentangled-retriever
+python -u \
+    -m torch.distributed.launch \
+    --nproc_per_node 4 \
+    -m disentangled_retriever.adapt.run_adapt_with_mlm \
+    --corpus_path $CORPUS_PATH \
+    --output_dir $OUTPUT_DIR \
+    --model_name_or_path jingtao/DAM-bert_base-mlm-msmarco \
+    --logging_first_step \
+    --logging_steps $LOG_STEPS \
+    --max_seq_length $MAX_LEN \
+    --per_device_train_batch_size $BATCH_SIZE \
+    --gradient_accumulation_steps $GRAD_ACCUM_STEPS \
+    --warmup_steps $WARMUP_STEPS \
+    --fp16 \
+    --learning_rate $LR \
+    --max_steps $MAX_STEPS \
+    --dataloader_drop_last \
+    --overwrite_output_dir \
+    --dataloader_num_workers 6 \
+    --weight_decay $W_DECAY \
+    --lr_scheduler_type "constant_with_warmup" \
+    --save_strategy "steps" \
+    --save_steps $SAVE_STEPS \
+    --optim $OPTIM \
+    --report_to wandb \
+    --run_name $DATASET
